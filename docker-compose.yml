@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # 서비스 마스터 DB (MariaDB + tmpfs)
+  # 서비스 마스터 DB (MariaDB)
   service-db:
     image: mariadb:10.11
     container_name: service-db
@@ -10,10 +10,11 @@ services:
     environment:
       MARIADB_ROOT_PASSWORD: password
       MARIADB_DATABASE: service_db
-    tmpfs:
-      - /var/lib/mysql
+      MARIADB_ROOT_HOST: '%'
+    volumes:
+      - service_mysql_data:/var/lib/mysql
 
-  # 분석용 DB (MariaDB + tmpfs)
+  # 분석용 DB (MariaDB)
   analysis-db:
     image: mariadb:10.11
     container_name: analysis-db
@@ -22,8 +23,9 @@ services:
     environment:
       MARIADB_ROOT_PASSWORD: password
       MARIADB_DATABASE: analysis_db
-    tmpfs:
-      - /var/lib/mysql
+      MARIADB_ROOT_HOST: '%'
+    volumes:
+      - analysis_mysql_data:/var/lib/mysql
 
   redis:
     image: redis:latest
@@ -60,6 +62,19 @@ services:
       ANALYSIS_DB_PORT: 3306
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+
+  # 분석 대시보드 (Streamlit)
+  app-analytics:
+    build:
+      context: ./analysis
+    container_name: analytics-app
+    ports:
+      - "8501:8501"
+    depends_on:
+      - analysis-db
+    environment:
+      ANALYSIS_DB_HOST: analysis-db
+      ANALYSIS_DB_PORT: 3306
 
 volumes:
   service_mysql_data:
