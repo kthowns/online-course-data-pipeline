@@ -40,18 +40,85 @@ docker-compose up --build -d
 
 ---
 
-## 🏗️ 4. 스키마 설명
+## 🏗️ 4. 스키마 명세 (Schema Specification)
 
 ### 설계 이유
 운영계(Service DB)의 무결성을 유지하면서도, 분석계(Analysis DB)에 **나이, 성별, 플랫폼 등**의 다차원 데이터를 이벤트 시점에 스냅샷으로 함께 적재하도록 설계했습니다. 이를 통해 운영 DB에 부하를 주지 않고 복잡한 집계 쿼리를 독립적으로 수행할 수 있습니다.
 
-### 테이블 구조 요약
-| DB 분류 | 테이블명 | 용도 | 주요 컬럼 |
-| :--- | :--- | :--- | :--- |
-| **Service DB** | `users`, `courses` | 마스터 데이터 | `id`, `email`, `teacher`, `price` |
-| **Analysis DB**| `raw_event_logs` | 원본 로그 보존 | `id`, `data (JSON)`, `createdAt` |
-| **Analysis DB**| `payment_analysis`| 결제 퍼널 분석 | `userId`, `amount`, `status`, `age`, `platform` |
-| **Analysis DB**| `search_analysis` | 검색 효율 분석 | `userId`, `keyword`, `resultCount`, `age` |
+### [Service DB] - 운영 마스터 데이터 (Port: 3307)
+
+#### 1. `users` (사용자 정보)
+| 컬럼명 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | BigInt (PK) | 사용자 고유 ID (Auto Increment) |
+| `email` | Varchar(255) | 사용자 이메일 주소 |
+| `name` | Varchar(255) | 사용자 이름 |
+| `role` | Enum | 역할 (STUDENT, TEACHER) |
+| `gender` | Enum | 성별 (MALE, FEMALE) |
+| `age` | Integer | 사용자 나이 |
+| `createdAt` | DateTime | 계정 생성 일시 |
+
+#### 2. `courses` (강의 정보)
+| 컬럼명 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | BigInt (PK) | 강의 고유 ID (Auto Increment) |
+| `teacher` | Varchar(255) | 담당 강사명 |
+| `level` | Enum | 강의 난이도 (HIGH, MIDDLE, LOW) |
+| `category` | Varchar(255) | 강의 카테고리 (예: Programming) |
+| `price` | BigInt | 강의 가격 |
+| `totalDuration` | Integer | 전체 강의 시간 (초 단위) |
+| `createdAt` | DateTime | 강의 등록 일시 |
+
+#### 3. `payments` (결제 마스터)
+| 컬럼명 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | BigInt (PK) | 결제 고유 ID (Auto Increment) |
+| `userId` | BigInt | 결제 요청 사용자 ID |
+| `courseId` | BigInt | 결제 대상 강의 ID |
+| `status` | Enum | 결제 상태 (ADD_TO_CART, PURCHASE 등) |
+| `createdAt` | DateTime | 최초 생성 시각 |
+| `updatedAt` | DateTime | 마지막 상태 변경 시각 |
+
+---
+
+### [Analysis DB] - 분석 및 로그 데이터 (Port: 3308)
+
+#### 1. `raw_event_logs` (원본 이벤트 수집)
+| 컬럼명 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | BigInt (PK) | 로그 고유 ID (Auto Increment) |
+| `data` | Text (JSON) | 수집된 원본 EventEnvelope 전체 데이터 |
+| `createdAt` | DateTime | 수집된 시각 |
+
+#### 2. `payment_analysis` (결제 퍼널 분석용)
+| 컬럼명 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | BigInt (PK) | 분석 데이터 고유 ID (Auto Increment) |
+| `logId` | BigInt | `raw_event_logs` 참조용 ID |
+| `userId` | BigInt | 사용자 ID (이벤트 시점) |
+| `courseId` | BigInt | 강의 ID (이벤트 시점) |
+| `status` | Enum | 결제 단계 상태 |
+| `amount` | BigInt | 결제 요청 금액 |
+| `category` | Varchar(255) | 강의 카테고리 (Snapshotted) |
+| `platform` | Varchar(255) | 사용 기기 (WEB, MOBILE) |
+| `region` | Varchar(255) | 접속 지역 (예: KR) |
+| `age` | Integer | 사용자 나이 (Snapshotted) |
+| `gender` | Enum | 사용자 성별 (Snapshotted) |
+| `eventTime` | DateTime | 실제 이벤트 발생 시각 |
+| `errorCode` | Varchar(255) | 결제 실패 시 에러 코드 |
+
+#### 3. `search_analysis` (검색 패턴 분석용)
+| 컬럼명 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | BigInt (PK) | 분석 데이터 고유 ID (Auto Increment) |
+| `logId` | BigInt | `raw_event_logs` 참조용 ID |
+| `userId` | BigInt | 사용자 ID |
+| `keyword` | Varchar(255) | 검색 키워드 |
+| `resultCount` | Integer | 검색 결과 개수 |
+| `viewedCourseId` | BigInt | 검색 후 클릭한 강의 ID |
+| `age` | Integer | 사용자 나이 |
+| `gender` | Enum | 사용자 성별 |
+| `eventTime` | DateTime | 이벤트 발생 시각 |
 
 ---
 
@@ -71,7 +138,7 @@ docker-compose up --build -d
 ---
 
 ## ⚙️ 6. 환경 설정 (Ports)
-- **Analytics Dashboard**: `8501`
+- **Analytics Dashboard**: `8501` (접속용)
 - **Service DB**: `3307`
 - **Analysis DB**: `3308`
 - **Redis**: `6380`
