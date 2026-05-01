@@ -9,22 +9,12 @@
 
 ### 필요한 도구
 - **Docker Desktop**: 컨테이너 기반 인프라 및 앱 실행
-- **JDK 21**: 프로젝트 빌드 시 필요 (실행만 할 경우 Docker 내부에 포함됨)
 
-### 실행 명령어 순서
-1. **프로젝트 빌드**:
-   ```powershell
-   ./gradlew.bat bootJar
-   ```
-2. **시스템 시작**:
-   ```powershell
-   docker-compose up --build -d
-   ```
-3. **상태 확인**:
-   ```powershell
-   docker-compose ps
-   docker-compose logs -f consumer-app
-   ```
+### 실행 명령어 (단 한 줄로 시작)
+```powershell
+docker-compose up --build -d
+```
+> **참고**: Multi-stage Build를 통해 Docker 내부에서 자동으로 소스 코드를 빌드하므로, 별도의 JDK 설치나 Gradle 빌드가 필요하지 않습니다.
 
 ---
 
