@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: producer-app
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6380}
+
+logging:
+  level:
+    com.example.pipeline: DEBUG

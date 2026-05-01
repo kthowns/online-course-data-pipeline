@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # 서비스 마스터 DB (OLTP)
+  service-mysql:
+    image: mysql:8.0
+    container_name: service-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: service_db
+    volumes:
+      - service_mysql_data:/var/lib/mysql
+
+  # 분석용 DB (OLAP)
+  analysis-mysql:
+    image: mysql:8.0
+    container_name: analysis-mysql
+    ports:
+      - "3308:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: analysis_db
+    volumes:
+      - analysis_mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:latest
+    container_name: pipeline-redis
+    ports:
+      - "6380:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+
+  app-producer:
+    build: ./producer
+    container_name: producer-app
+    depends_on:
+      - redis
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+  app-consumer:
+    build: ./consumer
+    container_name: consumer-app
+    depends_on:
+      - service-mysql
+      - analysis-mysql
+      - redis
+    restart: always
+    environment:
+      SERVICE_DB_HOST: service-mysql
+      SERVICE_DB_PORT: 3306
+      ANALYSIS_DB_HOST: analysis-mysql
+      ANALYSIS_DB_PORT: 3306
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+volumes:
+  service_mysql_data:
+  analysis_mysql_data:
