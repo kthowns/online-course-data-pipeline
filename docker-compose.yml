@@ -1,29 +1,29 @@
 version: '3.8'
 
 services:
-  # 서비스 마스터 DB (OLTP)
-  service-mysql:
-    image: mysql:8.0
-    container_name: service-mysql
+  # 서비스 마스터 DB (MariaDB + tmpfs)
+  service-db:
+    image: mariadb:10.11
+    container_name: service-db
     ports:
       - "3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: service_db
-    volumes:
-      - service_mysql_data:/var/lib/mysql
+      MARIADB_ROOT_PASSWORD: password
+      MARIADB_DATABASE: service_db
+    tmpfs:
+      - /var/lib/mysql
 
-  # 분석용 DB (OLAP)
-  analysis-mysql:
-    image: mysql:8.0
-    container_name: analysis-mysql
+  # 분석용 DB (MariaDB + tmpfs)
+  analysis-db:
+    image: mariadb:10.11
+    container_name: analysis-db
     ports:
       - "3308:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: analysis_db
-    volumes:
-      - analysis_mysql_data:/var/lib/mysql
+      MARIADB_ROOT_PASSWORD: password
+      MARIADB_DATABASE: analysis_db
+    tmpfs:
+      - /var/lib/mysql
 
   redis:
     image: redis:latest
@@ -45,18 +45,14 @@ services:
     build: ./consumer
     container_name: consumer-app
     depends_on:
-      - service-mysql
-      - analysis-mysql
+      - service-db
+      - analysis-db
       - redis
     restart: always
     environment:
-      SERVICE_DB_HOST: service-mysql
+      SERVICE_DB_HOST: service-db
       SERVICE_DB_PORT: 3306
-      ANALYSIS_DB_HOST: analysis-mysql
+      ANALYSIS_DB_HOST: analysis-db
       ANALYSIS_DB_PORT: 3306
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-
-volumes:
-  service_mysql_data:
-  analysis_mysql_data:

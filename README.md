@@ -1,95 +1,82 @@
-# 🎓 온라인 강의 구매 패턴 분석 및 데이터 파이프라인
+# 🎓 실시간 강의 구매 패턴 분석 데이터 파이프라인
+> **Analyzing Course Purchase Patterns & Identifying Pain Points**
 
-이 프로젝트는 온라인 강의 플랫폼에서 발생하는 사용자 행동 로그(검색, 결제 단계 등)를 실시간으로 수집하고, 이를 분석 가능한 형태로 가공하여 DB에 적재하는 엔드투엔드 데이터 파이프라인 시스템입니다.
+이 프로젝트는 온라인 강의 플랫폼에서 발생하는 다양한 사용자 행동을 실시간으로 수집하고 가공하여 적재하는 엔드투엔드 데이터 파이프라인입니다.
 
-## 🚀 1. 프로젝트 개요
-- **목적**: 실시간 이벤트 스트리밍 기반의 ETL(Extract, Transform, Load) 프로세스 구현 및 서비스/분석 데이터 격리.
-- **핵심 아키텍처**: 
-  - **Producer**: 가상의 사용자 행동 이벤트를 생성하여 Redis Streams에 발행.
-  - **Redis Streams**: 고성능 비동기 메시지 브로커 및 이벤트 저장소.
-  - **Consumer**: 멀티 데이터소스 설정을 통해 마스터 데이터를 참조하고, 분석 전용 DB에 결과를 적재.
-  - **Service DB**: 마스터 데이터(사용자, 강의 등)를 관리하는 운영계 DB.
-  - **Analysis DB**: 가공된 이벤트 로그 및 통계 데이터를 관리하는 분석계 DB.
+---
 
-## 🛠 2. 기술 스택
-- **Language**: Java 21 (JDK 17 이상 호환)
-- **Framework**: Spring Boot 3.2.5
-- **Build Tool**: Gradle 8.7 (Multi-module)
-- **Message Broker**: Redis (Streams)
-- **Database**: MySQL 8.0 (Multi-DataSource 설정)
-- **Infra**: Docker, Docker Compose
+## 🏃 1. 실행 방법
 
-## 📂 3. 프로젝트 구조
-```text
-.
-├── common      # 공통 도메인 모델, Enum, 이벤트 규격
-├── producer    # 이벤트 생성기 (Redis XADD 발행)
-├── consumer    # 데이터 파이프라인 (멀티 DB 설정 및 ETL 로직)
-│   └── repository
-│       ├── service     # 서비스 마스터 DB용 레포지토리
-│       └── analysis    # 분석 전용 DB용 레포지토리
-└── document    # 프로젝트 요구사항 및 설계 문서
-```
+### 필요한 도구
+- **Docker Desktop**: 컨테이너 기반 인프라 및 앱 실행
+- **JDK 21**: 프로젝트 빌드 시 필요 (실행만 할 경우 Docker 내부에 포함됨)
 
-## ⚙️ 4. 환경 설정 (Ports)
-로컬 환경과의 충돌을 피하기 위해 다음과 같이 포트를 설정하였습니다:
-- **Service MySQL**: `3307` (내부 3306)
-- **Analysis MySQL**: `3308` (내부 3306)
-- **Redis**: `6380` (내부 6379)
-- **Producer App**: `8080`
+### 실행 명령어 순서
+1. **프로젝트 빌드**:
+   ```powershell
+   ./gradlew.bat bootJar
+   ```
+2. **시스템 시작**:
+   ```powershell
+   docker-compose up --build -d
+   ```
+3. **상태 확인**:
+   ```powershell
+   docker-compose ps
+   docker-compose logs -f consumer-app
+   ```
+
+---
+
+## 📊 2. 스키마 설명
+
+### 설계 이유
+운영계(Service DB)의 무결성을 유지하면서도, 분석계(Analysis DB)에 **나이, 성별, 플랫폼, 지역 등**의 다차원 데이터를 이벤트 시점에 스냅샷으로 함께 적재하도록 설계했습니다. 이를 통해 운영 DB에 대한 부하 없이 복잡한 집계 쿼리를 독립적으로 수행하고 시간 흐름에 따른 사용자 행동 변화를 정확히 추적할 수 있습니다.
+
+### 테이블 구조 요약
+
+#### **[Service DB] - 운영 마스터 데이터**
+| 테이블명 | 용도 | 주요 컬럼 |
+| :--- | :--- | :--- |
+| `users` | 사용자 정보 | `id`, `email`, `role`, `gender`, `age` |
+| `courses` | 강의 정보 | `id`, `teacher`, `level`, `category`, `price` |
+| `payments` | 결제 마스터 | `id`, `userId`, `courseId`, `status` |
+
+#### **[Analysis DB] - 분석 및 로그 데이터**
+| 테이블명 | 용도 | 주요 컬럼 |
+| :--- | :--- | :--- |
+| `raw_event_logs` | 원본 이벤트 수집 | `id`, `data (JSON)`, `createdAt` |
+| `payment_analysis` | 결제 퍼널 분석 | `userId`, `courseId`, `amount`, `status`, `age`, `gender`, `platform`, `region` |
+| `search_analysis` | 검색 패턴 분석 | `userId`, `keyword`, `resultCount`, `viewedCourseId`, `age`, `gender` |
+
+---
+
+## 🤔 3. 구현하면서 고민한 점
+
+### 서비스 DB와 분석 DB의 물리적 분리
+- **문제**: 한 DB에 모든 데이터를 넣을 경우 분석가의 무거운 쿼리가 실제 사용자 결제 서비스에 영향을 줄 수 있었습니다.
+- **결정**: Spring Boot의 **Multi-DataSource** 기능을 사용하여 운영계(`service_db`)와 분석계(`analysis_db`)를 물리적으로 분리된 MariaDB 인스턴스로 구축했습니다.
+
+### Docker 환경에서의 I/O 병목 해결
+- **문제**: 로컬 환경의 Docker 디스크 I/O 속도 문제로 인해 MySQL 초기화 과정에서 컨테이너가 멈추는 현상이 발생했습니다.
+- **해결**: `docker-compose.yml`에서 DB 데이터 영역을 **RAM 기반 저장소(`tmpfs`)**로 설정하여 초기화 및 쓰기 성능을 비약적으로 향상시켰습니다.
+
+### 데이터 정규화 vs 역정규화
+- **고민**: 분석 테이블을 만들 때 ID만 저장할지, 모든 정보를 펼쳐서 저장할지 고민했습니다.
+- **결정**: 분석 쿼리 속도를 높이기 위해 이벤트 발생 당시의 사용자 속성 정보를 포함하는 **역정규화(Denormalization)** 방식을 택해 Join 연산을 최소화했습니다.
+
+---
+
+## 🏗️ 4. 시스템 아키텍처
+1. **Producer**: 가상의 이벤트를 생성하여 **Redis Streams**에 발행.
+2. **Redis Streams**: 고성능 비동기 메시지 브로커 및 이벤트 저장소.
+3. **Consumer**: 스트림을 구독하여 ETL(추출, 변환, 적재) 수행.
+
+---
+
+## ⚙️ 5. 환경 설정 (Ports)
+- **Service DB**: `3307`
+- **Analysis DB**: `3308`
+- **Redis**: `6380`
 - **Consumer App**: `8081`
-
----
-
-## 🏃 5. 실행 방법
-
-### 방법 A: 전체 시스템 도커로 실행 (권장)
-애플리케이션을 포함한 모든 시스템을 컨테이너 환경에서 실행합니다.
-```powershell
--- 먼저 JAR 파일을 빌드합니다.
-./gradlew.bat bootJar
-
--- 전체 서비스를 빌드 및 실행합니다.
-docker-compose up --build -d
-```
-
-### 방법 B: 로컬에서 애플리케이션 실행
-인프라(DB, Redis)만 도커로 띄우고 앱은 로컬에서 직접 실행합니다.
-```powershell
--- 인프라 실행
-docker-compose up -d service-db analysis-db redis
-
--- Consumer 실행 (별도 터미널)
-./gradlew.bat :consumer:bootRun
-
--- Producer 실행 (별도 터미널)
-./gradlew.bat :producer:bootRun
-```
-
----
-
-## 📊 6. 데이터 확인
-
-### 실시간 로그 확인
-애플리케이션 실행 후 콘솔 로그에서 다음과 같은 흐름을 확인할 수 있습니다:
-1. `Producer`: `Published event to stream lecture-events: SEARCH`
-2. `Consumer`: `Received message from stream: {...}`
-3. `Consumer`: `Saved payment analysis to analysis_db for log 1`
-
-### DB 데이터 조회
-각 목적에 맞는 DB에 접속하여 데이터를 확인할 수 있습니다.
-
-**1. Analysis DB (Port 3308)**
-- **DB**: `analysis_db`
-- **주요 테이블**:
-  - `raw_event_logs`: 수집된 이벤트 원본 (JSON)
-  - `payment_analysis`: 결제 단계별 분석 데이터
-  - `search_analysis`: 강의 검색 패턴 분석 데이터
-
-```sql
-SELECT * FROM payment_analysis ORDER BY event_time DESC;
-```
-
-**2. Service DB (Port 3307)**
-- **DB**: `service_db`
-- **주요 테이블**: `users`, `courses`, `payments` 등
+- **Producer App**: `8080`
